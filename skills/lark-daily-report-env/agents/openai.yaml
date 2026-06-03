@@ -1,0 +1,4 @@
+interface:
+  display_name: "飞书日报环境检查"
+  short_description: "检查飞书 CLI、登录、权限、Playwright 和 Chromium"
+  default_prompt: "Use $lark-daily-report-env to check my Feishu daily-report environment, including lark-cli login, required permissions, Playwright, and Chromium."

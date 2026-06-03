@@ -1,0 +1,4 @@
+interface:
+  display_name: "飞书日报网页填报"
+  short_description: "采集当天飞书工作素材，清洗后直接填写汇报网页"
+  default_prompt: "Use $lark-daily-report to collect today’s Feishu work context, write a privacy-cleaned daily report, inject it into the Feishu Report page with Codex Browser, and leave review and final submission to me."

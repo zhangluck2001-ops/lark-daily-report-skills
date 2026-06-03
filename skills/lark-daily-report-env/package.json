@@ -1,0 +1,8 @@
+{
+  "name": "lark-daily-report-env-runtime",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "playwright": "1.52.0"
+  }
+}
