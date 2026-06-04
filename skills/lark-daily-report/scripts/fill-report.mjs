@@ -12,7 +12,6 @@ import { dirname, resolve } from 'path';
 import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
 
-const DEFAULT_REPORT_URL = 'https://oa.feishu.cn/report/record/detail?lang=zh-CN&open_in_browser=true&from=miniprogram%3Aminiprogram-native-fusion%3Acli_9d0208a7d1bbd10c&ruleId=7573565276168011780&botScene=write_notice&botName=near_submit_ddl&fromAppLink=true';
 const ROOT_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
 const { loadPlaywrightRuntime } = require('./playwright-runtime.cjs');
@@ -22,9 +21,9 @@ const {
   source: PLAYWRIGHT_RUNTIME,
 } = loadPlaywrightRuntime({ rootDir: ROOT_DIR });
 const DATA_DIR = resolve(homedir(), '.playwright-data', 'lark-daily-report');
-const REPORT_URL = process.env.LARK_REPORT_URL || DEFAULT_REPORT_URL;
+const REPORT_URL = process.env.LARK_REPORT_URL;
 const EDITOR_SELECTOR = '.zone-container.editor-kit-container';
-const LOGIN_WAIT_MS = Number(process.env.LARK_LOGIN_WAIT_MS || '0');
+const LOGIN_WAIT_MS = Number(process.env.LARK_LOGIN_WAIT_MS || String(30 * 60 * 1000));
 const LOGIN_POLL_MS = 3000;
 const FORM_SETTLE_MS = 10000;
 
@@ -144,12 +143,28 @@ async function verifyEditorText(editor, expected, label) {
   }
 }
 
-async function replaceEditorText(editor, value, label) {
-  await editor.fill(value);
+async function replaceEditorText(page, editor, value, label) {
+  try {
+    await editor.fill(value, { timeout: 10000 });
+    await verifyEditorText(editor, value, label);
+    return;
+  } catch (error) {
+    console.log(`字段 ${label} 不能直接 fill，改用键盘输入：${error.message}`);
+  }
+
+  const selectAll = process.platform === 'darwin' ? 'Meta+A' : 'Control+A';
+  await editor.click({ timeout: 10000 });
+  await page.keyboard.press(selectAll);
+  await page.keyboard.press('Backspace');
+  await page.keyboard.type(value, { delay: 1 });
   await verifyEditorText(editor, value, label);
 }
 
 async function main() {
+  if (!REPORT_URL) {
+    throw new Error('请先设置环境变量 LARK_REPORT_URL 为你所在组织的飞书汇报页面链接');
+  }
+
   const summary = readInput('daily-summary.txt');
   const plan = readInput('daily-plan.txt');
   if (!summary || !plan) {
@@ -177,15 +192,15 @@ async function main() {
     throw new Error('字段定位失败：今日工作总结和明日工作计划指向同一个编辑器');
   }
 
-  await replaceEditorText(summaryField.editor, summary, '今日工作总结');
-  await replaceEditorText(planField.editor, plan, '明日工作计划');
+  await replaceEditorText(page, summaryField.editor, summary, '今日工作总结');
+  await replaceEditorText(page, planField.editor, plan, '明日工作计划');
   await verifyEditorText(summaryField.editor, summary, '今日工作总结');
   await verifyEditorText(planField.editor, plan, '明日工作计划');
 
   removeInput('daily-summary.txt');
   removeInput('daily-plan.txt');
   console.log('内容已填入，请检查后手动提交。');
-  await new Promise(() => {});
+  await browser.close();
 }
 
 main().catch(error => {

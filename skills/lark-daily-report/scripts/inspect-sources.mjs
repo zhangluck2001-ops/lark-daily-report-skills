@@ -24,14 +24,14 @@ function parseArgs(argv) {
   return args;
 }
 
-const WORK_SIGNALS = [
+const CANDIDATE_WORK_SIGNALS = [
   '日报', '周报', '会议', '纪要', '需求', '方案', '评审', '排期', '上线', '发布',
   '测试', '修复', '问题', '进展', '提交', '交付', '客户', '报价', '产品', '项目',
   '自动化', '权限', '脚本', '数据', '平台', '认证', '目标', 'OKR', 'skill', 'Codex',
   'bug', 'PRD', 'demo',
 ];
 
-const LOW_CONTEXT_SIGNALS = [
+const CANDIDATE_LOW_CONTEXT_SIGNALS = [
   '收到', '好的', 'ok', 'OK', '哈哈', '辛苦', '谢谢', '表情', '图片', '红包',
 ];
 
@@ -45,7 +45,7 @@ function scoreChat(chat) {
   let score = Math.min(chat.messageCount || 0, 20);
   const reasons = [];
 
-  const matchedSignals = WORK_SIGNALS.filter(signal => joined.includes(signal)).slice(0, 5);
+  const matchedSignals = CANDIDATE_WORK_SIGNALS.filter(signal => joined.includes(signal)).slice(0, 5);
   if (matchedSignals.length) {
     score += matchedSignals.length * 8;
     reasons.push(`signals:${matchedSignals.join(',')}`);
@@ -62,7 +62,7 @@ function scoreChat(chat) {
     reasons.push(`long_messages:${longMessages}`);
   }
 
-  const lowContextHits = LOW_CONTEXT_SIGNALS.filter(signal => joined.includes(signal)).length;
+  const lowContextHits = CANDIDATE_LOW_CONTEXT_SIGNALS.filter(signal => joined.includes(signal)).length;
   if (lowContextHits && !matchedSignals.length && longMessages <= 2) {
     score -= Math.min(lowContextHits * 4, 12);
     reasons.push('likely_low_context');
@@ -95,6 +95,20 @@ function chatPreview(chat) {
     candidateScore: score,
     candidateReasons: reasons,
     preview: [...informative, ...fallback, ...tail].slice(0, 3),
+  };
+}
+
+function chatCandidateMeta(chat) {
+  const { score, reasons } = scoreChat(chat);
+  return {
+    chatId: chat.chatId,
+    name: chat.name,
+    mode: chat.mode,
+    pages: chat.pages,
+    messageCount: chat.messageCount,
+    compactMessageCount: chat.messages.length,
+    candidateScore: score,
+    candidateReasons: reasons,
   };
 }
 
@@ -142,9 +156,13 @@ async function main() {
   }
 
   const rankedChats = data.activeChats
-    .map(chatPreview)
-    .sort((left, right) => right.candidateScore - left.candidateScore)
-    .slice(0, args.limitChats);
+    .map(chat => ({
+      preview: chatPreview(chat),
+      meta: chatCandidateMeta(chat),
+    }))
+    .sort((left, right) => right.meta.candidateScore - left.meta.candidateScore);
+  const shown = rankedChats.slice(0, args.limitChats).map(item => item.preview);
+  const omitted = rankedChats.slice(args.limitChats).map(item => item.meta);
 
   console.log(JSON.stringify({
     meta: data.meta,
@@ -153,9 +171,9 @@ async function main() {
     documents: data.documents,
     tasks: data.tasks || [],
     gaps: data.gaps,
-    activeChatsShown: rankedChats,
-    activeChatsOmitted: Math.max(0, data.activeChats.length - rankedChats.length),
-    note: 'activeChatsShown is a token-saving candidate list, not the final privacy/work relevance decision. Use --chat-id to inspect necessary chats only.',
+    activeChatsShown: shown,
+    activeChatsOmitted: omitted,
+    note: 'Chat scores are a token-saving candidate ranking. Omitted chats include metadata without message text; use --chat-id to inspect any omitted chat that may be work-related.',
   }, null, 2));
 }
 

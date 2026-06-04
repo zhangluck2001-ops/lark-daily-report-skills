@@ -37,6 +37,8 @@ bash scripts/ensure-environment.sh --force
 - Playwright 运行时与 Chromium
 - Codex in-app Browser 插件缓存提示
 
+`ensure-environment.sh` 的通过标记最多复用 7 天，并且每次复用前仍会轻量校验飞书用户 token；登录过期或权限变化时会自动重跑完整检查。
+
 ## 修复
 
 缺少本地依赖时，在用户同意后运行：

@@ -24,7 +24,10 @@ fix() {
 version_lt() {
   node - "$1" "$2" <<'NODE'
 const [current, minimum] = process.argv.slice(2);
-const parts = value => String(value || '').replace(/^v/, '').split('.').map(part => Number(part) || 0);
+const parts = value => String(value || '').replace(/^v/, '').split('.').map(part => {
+  const match = String(part).match(/\d+/);
+  return match ? Number(match[0]) : 0;
+});
 const left = parts(current);
 const right = parts(minimum);
 for (let i = 0; i < Math.max(left.length, right.length); i += 1) {
@@ -53,7 +56,13 @@ fi
 
 if command -v lark-cli >/dev/null 2>&1; then
   ok "lark-cli: $(command -v lark-cli)"
-  LARK_CLI_VERSION="$(lark-cli --version 2>/dev/null | sed -E 's/.*version[[:space:]]+//' | tr -d '[:space:]' || true)"
+  LARK_CLI_VERSION="$(lark-cli --version 2>/dev/null | node -e "
+let input = '';
+process.stdin.on('data', chunk => input += chunk);
+process.stdin.on('end', () => {
+  const match = input.match(/v?([0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?)/);
+  console.log(match ? match[1] : '');
+});" 2>/dev/null || true)"
   if [ -n "$LARK_CLI_VERSION" ]; then
     if version_lt "$LARK_CLI_VERSION" "$MIN_LARK_CLI_VERSION"; then
       missing "lark-cli version is too old: $LARK_CLI_VERSION < $MIN_LARK_CLI_VERSION"

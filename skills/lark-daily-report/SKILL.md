@@ -21,13 +21,16 @@ metadata:
 读取 [`references/data-collection.md`](references/data-collection.md)，默认运行：
 
 ```bash
-node scripts/collect-sources.mjs --output "/private/tmp/lark-daily-report-sources.json"
-node scripts/inspect-sources.mjs --input "/private/tmp/lark-daily-report-sources.json" --index --limit-chats 8
+SOURCES_FILE="/private/tmp/lark-daily-report-sources.json"
+trap 'node scripts/inspect-sources.mjs --input "$SOURCES_FILE" --cleanup >/dev/null 2>&1 || true' EXIT
+node scripts/collect-sources.mjs --output "$SOURCES_FILE"
+node scripts/inspect-sources.mjs --input "$SOURCES_FILE" --index --limit-chats 8
 ```
 
 - 日期默认直接取电脑本地日期和时区；正常日报不要手动计算或指定日期。
-- 脚本分页枚举全部群聊和私聊，并发读取当天消息；同时读取日程、任务、会议纪要摘要、今日创建文档和今日修改多维表格；只执行一轮网络采集。
-- 临时文件只保存脱敏后的结构化素材；默认索引只输出少量候选会话，避免 token 爆炸。
+- 脚本按活跃时间分页读取群聊和私聊候选，并发读取当天消息；同时读取日程、任务、会议纪要摘要、今日创建文档和今日修改多维表格；只执行一轮网络采集。
+- 临时文件权限为 `0600`，只保存去敏感 token 后的结构化素材，不等同于完整脱敏；必须用 `trap` 或等价机制确保中途失败也清理。
+- 默认索引用候选分排序输出少量会话预览；被省略会话也输出无正文 metadata，AI 可根据 `chatId/name/score` 决定是否展开。
 - 使用 `inspect-sources.mjs --chat-id "<CHAT_ID>"` 按会话渐进读取；只展开与日报判断有关的会话，长会话用 `--chunk` 分块。
 - 会议不能只看标题或 display，必须使用脚本采集到的 `meetings[].notes[].summary` 作为摘要依据；缺失时记录缺口，不要脑补。
 - 数据缺口单独记录，不阻塞可用来源。
@@ -55,7 +58,7 @@ node scripts/inspect-sources.mjs --input "/private/tmp/lark-daily-report-sources
 - 保持浏览器打开，只提示用户“日报已写完，请自行检查、修改并点击提交”。
 - Skill 永远不点击最终提交按钮。
 
-完成后删除临时素材：
+完成后删除临时素材。如果前面已设置 `trap`，这里通常会自动执行；手动清理命令为：
 
 ```bash
 node scripts/inspect-sources.mjs --input "/private/tmp/lark-daily-report-sources.json" --cleanup

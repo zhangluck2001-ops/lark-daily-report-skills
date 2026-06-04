@@ -12,6 +12,12 @@ bash scripts/setup-environment.sh
 
 该脚本优先复用电脑上已经存在且版本匹配的 Playwright 运行时与 Chromium。只有找不到可用组合时，才安装 `lark-cli`、Skill 本地 Playwright 依赖或 Chromium。不要静默安装。
 
+安装 Chromium 时脚本使用国内镜像变量：
+
+```bash
+PLAYWRIGHT_DOWNLOAD_BASE_URL=https://npmmirror.com/mirrors/playwright
+```
+
 ## Codex in-app Browser
 
 Codex Desktop 的 in-app `Browser` 是宿主插件，不是 Skill 内依赖，也不是用户普通 Chrome。Skill 脚本不能通过 npm 强制安装宿主插件。

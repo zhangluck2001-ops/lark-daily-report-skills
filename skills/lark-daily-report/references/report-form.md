@@ -2,10 +2,12 @@
 
 此表单位于飞书「汇报」板块，不是飞书云文档。
 
-## 固定入口
+## 汇报入口
+
+公开仓库不保存任何组织内部 appId 或 ruleId。运行前必须由用户或调用方提供飞书汇报页面链接：
 
 ```text
-https://oa.feishu.cn/report/record/detail?lang=zh-CN&open_in_browser=true&from=miniprogram%3Aminiprogram-native-fusion%3Acli_9d0208a7d1bbd10c&ruleId=7573565276168011780&botScene=write_notice&botName=near_submit_ddl&fromAppLink=true
+export LARK_REPORT_URL="https://oa.feishu.cn/report/record/detail?lang=zh-CN&open_in_browser=true&from=miniprogram%3Aminiprogram-native-fusion%3A<你的appId>&ruleId=<你的ruleId>&botScene=write_notice&botName=near_submit_ddl&fromAppLink=true"
 ```
 
 ## 浏览器选择
@@ -15,10 +17,10 @@ https://oa.feishu.cn/report/record/detail?lang=zh-CN&open_in_browser=true&from=m
 3. 不要因为本地已安装 Playwright 就跳过 Browser。只有当前会话没有 Browser 插件、或 Browser 调用失败且已明确告知用户时，才使用本地 Playwright 回退：
 
 ```bash
-node scripts/fill-report.mjs
+LARK_REPORT_URL="https://oa.feishu.cn/report/record/detail?...&ruleId=<你的ruleId>&from=...<你的appId>..." node scripts/fill-report.mjs
 ```
 
-回退脚本从 Skill 根目录读取 `daily-summary.txt` 和 `daily-plan.txt`。其他团队可设置 `LARK_REPORT_URL`。正常流程优先用 Codex Browser 直接注入，不要把草稿发给用户确认后再写。
+回退脚本从 Skill 根目录读取 `daily-summary.txt` 和 `daily-plan.txt`，且必须设置 `LARK_REPORT_URL`。正常流程优先用 Codex Browser 直接注入，不要把草稿发给用户确认后再写。
 
 ## 页面可见性
 

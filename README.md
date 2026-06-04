@@ -76,6 +76,7 @@ cp -R skills/lark-daily-report-env ~/.agents/skills/
 - 不代替用户点击最终提交。
 - 不把私人聊天、无关闲聊、敏感个人信息写入日报。
 - 页面填写必须可见，方便用户检查。
+- 公开仓库不包含任何组织内部 appId、ruleId 或真实汇报链接；使用本地 Playwright 回退时必须自行设置 `LARK_REPORT_URL`。
 
 ## 仓库结构
 
@@ -87,4 +88,3 @@ cp -R skills/lark-daily-report-env ~/.agents/skills/
     ├── lark-daily-report
     └── lark-daily-report-env
 ```
-

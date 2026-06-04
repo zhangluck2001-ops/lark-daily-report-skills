@@ -8,16 +8,21 @@ function unique(values) {
 }
 
 function cacheLinkTargets() {
-  const linksDir = path.join(os.homedir(), 'Library', 'Caches', 'ms-playwright', '.links');
-  if (!fs.existsSync(linksDir)) return [];
+  const cacheRoots = unique([
+    process.env.PLAYWRIGHT_BROWSERS_PATH,
+    process.platform === 'darwin' ? path.join(os.homedir(), 'Library', 'Caches', 'ms-playwright') : '',
+    process.platform === 'win32' && process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'ms-playwright') : '',
+    path.join(os.homedir(), '.cache', 'ms-playwright'),
+  ]);
+  const linksDirs = cacheRoots.map(root => path.join(root, '.links')).filter(fs.existsSync);
 
-  return fs.readdirSync(linksDir).flatMap(name => {
-    try {
-      return [fs.readFileSync(path.join(linksDir, name), 'utf8').trim()];
-    } catch {
-      return [];
-    }
-  }).sort((left, right) => {
+  return linksDirs.flatMap(linksDir => fs.readdirSync(linksDir).flatMap(name => {
+      try {
+        return [fs.readFileSync(path.join(linksDir, name), 'utf8').trim()];
+      } catch {
+        return [];
+      }
+    })).sort((left, right) => {
     const priority = value => value.includes('/playwright/driver/package')
       ? 0
       : value.includes('/patchright/driver/package')

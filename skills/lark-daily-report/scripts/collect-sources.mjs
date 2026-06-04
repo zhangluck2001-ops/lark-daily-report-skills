@@ -60,10 +60,17 @@ function dateRange(requestedDate) {
 async function cli(args) {
   const { stdout } = await execFileAsync('lark-cli', args, { encoding: 'utf8', maxBuffer: MAX_BUFFER });
   const trimmed = stdout.trim();
-  const jsonText = trimmed.startsWith('{')
-    ? trimmed
-    : trimmed.slice(trimmed.indexOf('{'), trimmed.lastIndexOf('}') + 1);
-  const result = JSON.parse(jsonText);
+  let result;
+  try {
+    result = JSON.parse(trimmed);
+  } catch {
+    const start = trimmed.indexOf('{');
+    const end = trimmed.lastIndexOf('}');
+    if (start < 0 || end <= start) {
+      throw new Error(`lark-cli did not return JSON: ${trimmed.slice(0, 500)}`);
+    }
+    result = JSON.parse(trimmed.slice(start, end + 1));
+  }
   if (!result.ok) throw new Error(JSON.stringify(result.error || result));
   return result.data || {};
 }
@@ -83,7 +90,11 @@ function sanitizeText(value) {
     .replace(/\b(?:img|file)_v\d+_[\w-]+\b/g, '<asset>')
     .replace(/<file\s+key="[^"]+"\s+name="([^"]+)"\s*\/>/g, '<file name="$1"/>')
     .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, '<ip>')
+    .replace(/\b\d{17}[\dXx]\b/g, '<id-card>')
+    .replace(/\b(?:\d[ -]?){16,19}\b/g, '<bank-card>')
     .replace(/\b1[3-9]\d{9}\b/g, '<phone>')
+    .replace(/(?:¥|￥)\s?\d+(?:,\d{3})*(?:\.\d+)?/g, '<amount>')
+    .replace(/\b\d+(?:\.\d+)?\s?(?:元|块|万元|万)\b/g, '<amount>')
     .replace(/\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b/g, '<email>')
     .replace(/\bou_[a-z0-9]+\b/gi, '<user-id>')
     .replace(/\bcli_[a-z0-9]+\b/gi, '<app-id>')
@@ -116,7 +127,7 @@ function compactMessages(messages) {
     const item = {
       time: message.create_time || '',
       type: message.msg_type || '',
-      sender: message.sender?.name || message.sender?.sender_type || '',
+      sender: message.sender?.sender_type || (message.sender ? '<sender>' : ''),
       content: sanitizeText(message.content),
     };
     const previous = compact.at(-1);
@@ -143,6 +154,72 @@ async function paged(fetchPage, itemKey) {
   return { items, pages };
 }
 
+function parseTimestamp(value) {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'number' || /^\d+$/.test(String(value))) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return null;
+    return number > 1e12 ? number : number * 1000;
+  }
+  const parsed = Date.parse(String(value));
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function chatActiveTime(chat) {
+  const candidates = [
+    chat.last_active_time,
+    chat.active_time,
+    chat.update_time,
+    chat.updated_at,
+    chat.last_message?.create_time,
+    chat.last_message?.update_time,
+    chat.last_message?.create_time_ms,
+  ];
+  for (const value of candidates) {
+    const timestamp = parseTimestamp(value);
+    if (timestamp !== null) return timestamp;
+  }
+  return null;
+}
+
+async function pagedActiveChats(range, gaps) {
+  const items = [];
+  let token = '';
+  let pages = 0;
+  let stoppedByActiveTime = false;
+  const startMs = Date.parse(range.start);
+  do {
+    const data = await cli([
+      'im', '+chat-list', '--as', 'user', '--types', 'group,p2p',
+      '--sort-type', 'ByActiveTimeDesc', '--page-size', '100', '--format', 'json',
+      ...(token ? ['--page-token', token] : []),
+    ]);
+    const chats = data.chats || [];
+    items.push(...chats.filter(chat => {
+      const activeMs = chatActiveTime(chat);
+      return activeMs === null || activeMs >= startMs;
+    }));
+
+    const lastKnownActiveMs = [...chats].reverse().map(chatActiveTime).find(value => value !== null);
+    if (lastKnownActiveMs !== undefined && lastKnownActiveMs < startMs) {
+      stoppedByActiveTime = true;
+      token = '';
+    } else {
+      token = data.has_more ? data.page_token : '';
+    }
+    pages += 1;
+  } while (token);
+
+  if (!stoppedByActiveTime && pages > 1) {
+    gaps.push({
+      source: 'chat-list-early-stop',
+      error: 'chat-list did not expose enough active_time metadata to stop before all pages',
+    });
+  }
+
+  return { items, pages, stoppedByActiveTime };
+}
+
 async function mapLimit(items, limit, mapper) {
   const output = new Array(items.length);
   let cursor = 0;
@@ -167,7 +244,8 @@ async function safe(label, fn, gaps) {
 }
 
 function simplifyAgenda(items) {
-  return items.map(item => ({
+  const list = Array.isArray(items) ? items : (items?.events || items?.items || items?.agenda || []);
+  return list.map(item => ({
     title: item.summary || '',
     start: item.start_time?.datetime || '',
     end: item.end_time?.datetime || '',
@@ -274,14 +352,7 @@ async function main() {
     '--due-start', range.today, '--due-end', range.nextNextDay,
     '--page-all', '--format', 'json',
   ]), gaps);
-  const chatsPromise = safe('chat-list', () => paged(token => {
-    const command = [
-      'im', '+chat-list', '--as', 'user', '--types', 'group,p2p',
-      '--sort-type', 'ByActiveTimeDesc', '--page-size', '100', '--format', 'json',
-    ];
-    if (token) command.push('--page-token', token);
-    return cli(command);
-  }, 'chats'), gaps);
+  const chatsPromise = safe('chat-list', () => pagedActiveChats(range, gaps), gaps);
 
   const [agendaData, meetingsData, documentsData, editedBitablesData, tasksData, chatsData] = await Promise.all([
     agendaPromise, meetingsPromise, documentsPromise, editedBitablesPromise, tasksPromise, chatsPromise,
@@ -316,11 +387,12 @@ async function main() {
       generatedAt: new Date().toISOString(),
       range,
       chatPages: chatsData?.pages || 0,
+      chatPaginationStoppedByActiveTime: Boolean(chatsData?.stoppedByActiveTime),
       chatsTotal: chats.length,
       activeChatsTotal: activeChats.length,
       gapsTotal: gaps.length,
     },
-    agenda: simplifyAgenda(agendaData || []),
+    agenda: simplifyAgenda(agendaData),
     meetings: simplifyMeetings(meetingItems).map(meeting => ({
       ...meeting,
       notes: meetingNotes.find(item => item.meetingId === meeting.meetingId)?.notes || [],

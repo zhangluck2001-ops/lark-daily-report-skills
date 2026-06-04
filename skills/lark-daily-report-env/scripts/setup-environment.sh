@@ -32,7 +32,7 @@ if ! node "$ROOT_DIR/scripts/playwright-runtime.cjs" >/dev/null 2>&1; then
   printf '[INSTALL] Playwright Chromium\n'
   (
     cd "$ROOT_DIR"
-    PLAYWRIGHT_BROWSERS_URL=https://npmmirror.com/mirrors/playwright npx playwright install chromium
+    PLAYWRIGHT_DOWNLOAD_BASE_URL=https://npmmirror.com/mirrors/playwright npx playwright install chromium
   )
 else
   printf '[OK] Compatible Playwright runtime and Chromium are ready\n'
